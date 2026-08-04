@@ -1,0 +1,32 @@
+; FATE EXECUTOR - Battle Core Vertical Slice
+; Godot 4.x project configuration.
+
+config_version=5
+
+[application]
+
+config/name="FATE EXECUTOR - Battle Prototype"
+config/version="0.1"
+run/main_scene="res://scenes/main.tscn"
+
+[autoload]
+
+AppServices="*res://src/application/app_services.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.025, 0.031, 0.047, 1)
+
+[gui]
+
+theme/default_font_multichannel_signed_distance_field=true

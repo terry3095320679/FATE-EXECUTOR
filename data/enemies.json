@@ -1,0 +1,12 @@
+{
+  "enemies": [
+    {
+      "id": "debt_gambler",
+      "name_key": "enemy.debt_gambler.name",
+      "max_health": 72,
+      "attack": 8,
+      "intent_key": "enemy.debt_gambler.intent",
+      "description_key": "enemy.debt_gambler.description"
+    }
+  ]
+}

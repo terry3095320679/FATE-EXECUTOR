@@ -1,0 +1,13 @@
+{
+  "hands": [
+    { "id": "straight_flush", "name_key": "hand.straight_flush", "priority": 9, "multiplier": 3.0, "required_cards": 5 },
+    { "id": "four_of_a_kind", "name_key": "hand.four_of_a_kind", "priority": 8, "multiplier": 2.75, "required_cards": 4 },
+    { "id": "full_house", "name_key": "hand.full_house", "priority": 7, "multiplier": 2.5, "required_cards": 5 },
+    { "id": "flush", "name_key": "hand.flush", "priority": 6, "multiplier": 2.25, "required_cards": 5 },
+    { "id": "straight", "name_key": "hand.straight", "priority": 5, "multiplier": 2.0, "required_cards": 5 },
+    { "id": "three_of_a_kind", "name_key": "hand.three_of_a_kind", "priority": 4, "multiplier": 1.75, "required_cards": 3 },
+    { "id": "two_pair", "name_key": "hand.two_pair", "priority": 3, "multiplier": 1.5, "required_cards": 4 },
+    { "id": "pair", "name_key": "hand.pair", "priority": 2, "multiplier": 1.25, "required_cards": 2 },
+    { "id": "high_card", "name_key": "hand.high_card", "priority": 1, "multiplier": 1.0, "required_cards": 1 }
+  ]
+}

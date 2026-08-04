@@ -1,0 +1,11 @@
+.godot/
+*.tmp
+*.log
+.codex/
+.agents/
+test-artifacts/*
+!test-artifacts/.gitkeep
+
+# Unrelated workspace material; not part of FATE EXECUTOR.
+DYNAMO_PROPOSAL.md
+dynamo-fd6fef6-model-training-and-ml-infrastructure/
