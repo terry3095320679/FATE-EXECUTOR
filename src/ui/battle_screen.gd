@@ -1,9 +1,17 @@
 extends Control
 
 const ENEMY_ID := &"debt_gambler"
+const RulesOverlayType = preload("res://src/ui/rules_overlay.gd")
+const RewardOverlayType = preload("res://src/ui/reward_overlay.gd")
+const MapOverlayType = preload("res://src/ui/map_overlay.gd")
+const SpecialNodeOverlayType = preload("res://src/ui/special_node_overlay.gd")
+const NodeFlowServiceType = preload("res://src/domain/node_flow_service.gd")
 
 var animation_duration_scale := 1.0
 var fixed_battle_seed := 0
+var fixed_reward_seed := 0
+var fixed_map_seed := 0
+var run_state_override: RunState
 
 var _deck: Deck
 var _evaluator: PokerEvaluator
@@ -16,6 +24,15 @@ var _enemy_definition: Dictionary
 var _log_events: Array[Dictionary] = []
 var _finished_result: Variant = null
 var _services: Node
+var _run: RunState
+var _reward_generator: RewardGenerator
+var _node_flow: RefCounted
+var _trinket_runtime: TrinketRuntime
+var _enemy_generation: Dictionary
+var _reward_generation_count := 0
+var _map_generation_count := 0
+var _content_generation_count := 0
+var _active_battle_type := "normal"
 
 var _refresh_execution_count := 0
 var _last_discard_animation_target := Vector2.ZERO
@@ -27,12 +44,15 @@ var _shuffle_animation_count := 0
 var _title_label: Label
 var _subtitle_label: Label
 var _round_label: Label
+var _stage_label: Label
+var _gold_label: Label
 var _restart_button: Button
 var _player_title: Label
 var _player_hint: Label
 var _player_health_label: Label
 var _player_health_bar: ProgressBar
-var _rules_label: Label
+var _player_block_label: Label
+var _rules_button: Button
 var _log_title: Label
 var _enemy_caption: Label
 var _enemy_name_label: Label
@@ -63,14 +83,27 @@ var _card_detail_label: Label
 var _card_detail_close: Button
 var _detail_card: CardData
 var _open_pile_kind := ""
+var _rules_overlay
 var _result_overlay: ColorRect
 var _result_title: Label
 var _result_detail: Label
 var _retry_button: Button
+var _reward_overlay: RewardOverlay
+var _map_overlay
+var _special_node_overlay
 
 
 func _ready() -> void:
 	_services = get_node("/root/AppServices")
+	_run = run_state_override if run_state_override != null else _services.run_state()
+	_reward_generator = RewardGenerator.new(
+		DataRepository.load_reward_config(),
+		DataRepository.load_trinkets()
+	)
+	_node_flow = NodeFlowServiceType.new(
+		DataRepository.load_node_config(),
+		DataRepository.load_trinkets()
+	)
 	_build_interface()
 	_services.language_changed.connect(_on_language_changed)
 	_start_battle()
@@ -110,7 +143,11 @@ func _build_interface() -> void:
 	_animation_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_animation_layer)
 	_build_pile_browser()
+	_build_rules_overlay()
 	_build_result_overlay()
+	_build_reward_overlay()
+	_build_map_overlay()
+	_build_special_node_overlay()
 
 
 func _build_header() -> Control:
@@ -135,10 +172,23 @@ func _build_header() -> Control:
 	_round_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	header.add_child(_round_label)
 
+	_stage_label = Label.new()
+	_stage_label.name = "StageLabel"
+	_stage_label.add_theme_font_size_override("font_size", 18)
+	_stage_label.add_theme_color_override("font_color", Color("#f3d98b"))
+	_stage_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	header.add_child(_stage_label)
+
+	_gold_label = Label.new()
+	_gold_label.name = "RunGoldLabel"
+	_gold_label.add_theme_font_size_override("font_size", 17)
+	_gold_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	header.add_child(_gold_label)
+
 	_restart_button = Button.new()
 	_restart_button.name = "RestartButton"
 	_restart_button.custom_minimum_size = Vector2(110, 38)
-	_restart_button.pressed.connect(_start_battle)
+	_restart_button.pressed.connect(_retry_battle)
 	header.add_child(_restart_button)
 	return header
 
@@ -166,11 +216,16 @@ func _build_arena() -> Control:
 	player_content.add_child(_player_health_label)
 	_player_health_bar = _health_bar(Color("#3dbf8f"))
 	player_content.add_child(_player_health_bar)
-	_rules_label = Label.new()
-	_rules_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_rules_label.add_theme_color_override("font_color", Color("#8290a7"))
+	_player_block_label = Label.new()
+	_player_block_label.name = "PlayerBlockLabel"
+	_player_block_label.add_theme_color_override("font_color", Color("#8fd7ff"))
+	player_content.add_child(_player_block_label)
 	player_content.add_spacer(false)
-	player_content.add_child(_rules_label)
+	_rules_button = Button.new()
+	_rules_button.name = "RulesButton"
+	_rules_button.custom_minimum_size = Vector2(145, 38)
+	_rules_button.pressed.connect(_open_rules)
+	player_content.add_child(_rules_button)
 	player_panel.add_child(player_content)
 	arena.add_child(player_panel)
 
@@ -354,6 +409,12 @@ func _build_pile_browser() -> void:
 	detail_content.add_child(_card_detail_close)
 
 
+func _build_rules_overlay() -> void:
+	_rules_overlay = RulesOverlayType.new()
+	add_child(_rules_overlay)
+	_rules_overlay.configure(_services)
+
+
 func _build_result_overlay() -> void:
 	_result_overlay = ColorRect.new()
 	_result_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -387,37 +448,141 @@ func _build_result_overlay() -> void:
 	card.add_child(content)
 
 
+func _build_reward_overlay() -> void:
+	_reward_overlay = RewardOverlayType.new()
+	add_child(_reward_overlay)
+	_reward_overlay.remove_card_confirmed.connect(_on_reward_remove_confirmed)
+	_reward_overlay.remove_card_skipped.connect(_on_reward_remove_skipped)
+	_reward_overlay.trinket_claim_requested.connect(_on_reward_trinket_claim)
+	_reward_overlay.trinket_skipped.connect(_on_reward_trinket_skipped)
+	_reward_overlay.card_choice_open_requested.connect(_on_reward_card_choice_open)
+	_reward_overlay.card_choice_skipped.connect(_on_reward_card_choice_skipped)
+	_reward_overlay.card_chosen.connect(_on_reward_card_chosen)
+	_reward_overlay.continue_requested.connect(_on_reward_continue)
+	_reward_overlay.configure(_services, _run, DataRepository.load_trinkets())
+
+
+func _build_map_overlay() -> void:
+	_map_overlay = MapOverlayType.new()
+	add_child(_map_overlay)
+	_map_overlay.candidate_selected.connect(_on_map_candidate_selected)
+	_map_overlay.destination_confirmed.connect(_on_map_destination_confirmed)
+	_map_overlay.selection_cancelled.connect(_on_map_selection_cancelled)
+
+
+func _build_special_node_overlay() -> void:
+	_special_node_overlay = SpecialNodeOverlayType.new()
+	add_child(_special_node_overlay)
+	_special_node_overlay.configure(_services, _run, _node_flow)
+	_special_node_overlay.shop_remove_confirmed.connect(_on_shop_remove_confirmed)
+	_special_node_overlay.shop_card_purchase_requested.connect(_on_shop_card_purchase)
+	_special_node_overlay.shop_card_chosen.connect(_on_shop_card_chosen)
+	_special_node_overlay.shop_heal_requested.connect(_on_shop_heal)
+	_special_node_overlay.shop_trinket_requested.connect(_on_shop_trinket_requested)
+	_special_node_overlay.shop_trinket_replacement_cancelled.connect(_on_shop_trinket_replacement_cancelled)
+	_special_node_overlay.shop_leave_requested.connect(_on_shop_leave)
+	_special_node_overlay.fountain_continue_requested.connect(_on_fountain_continue)
+	_special_node_overlay.treasure_open_requested.connect(_on_treasure_open)
+	_special_node_overlay.treasure_skip_requested.connect(_on_treasure_skip)
+	_special_node_overlay.treasure_trinket_requested.connect(_on_treasure_trinket_requested)
+
+
 func _start_battle() -> void:
 	if _animation_in_progress:
 		return
 	_close_pile_browser()
+	if _map_overlay != null:
+		_map_overlay.hide_map()
+	if _special_node_overlay != null:
+		_special_node_overlay.hide_node()
+	if _reward_overlay != null:
+		_reward_overlay.hide_reward()
+	if _rules_overlay != null:
+		_rules_overlay.hide_rules()
 	if _hand_state != null:
 		_hand_state.clear_battle()
 	_enemy_definition = DataRepository.load_enemy(ENEMY_ID)
-	_deck = Deck.new(DataRepository.load_deck_definition())
+	_active_battle_type = "normal"
+	if (
+		_run.node_state != null
+		and _run.node_state.selection_confirmed
+		and _run.node_state.selected_type == "elite"
+	):
+		_active_battle_type = "elite"
+	var node_config := DataRepository.load_node_config()
+	if _active_battle_type == "elite":
+		var elite_config: Dictionary = node_config.get("elite", {})
+		_enemy_generation = EnemyScaler.generate_elite(
+			_enemy_definition,
+			_run.stage,
+			float(elite_config.get("stat_multiplier", 1.5))
+		)
+	else:
+		_enemy_generation = EnemyScaler.generate(_enemy_definition, _run.stage)
+	_deck = _run.deck
 	_evaluator = PokerEvaluator.new(DataRepository.load_poker_rules())
-	_battle = BattleState.new(_enemy_definition)
+	_battle = BattleState.new(_enemy_generation)
+	_battle.set_player_state(_run.player_max_health, _run.player_health)
+	_trinket_runtime = TrinketRuntime.new(_run.trinket_ids, DataRepository.load_trinkets())
 	_hand_state = HandState.new()
+	_battle.health_changed.connect(_on_health_changed)
+	_battle.block_changed.connect(_on_block_changed)
+	_player_health_bar.max_value = _battle.player_max_health
+	_enemy_health_bar.max_value = _battle.enemy_max_health
+	_finished_result = null
+	_result_overlay.visible = false
+	_feedback_label.text = ""
+	_refresh_execution_count = 0
+	_log_events.clear()
+	_on_health_changed(_battle.player_health, _battle.enemy_health)
+	_on_block_changed(_battle.player_block)
+	_reward_overlay.configure(_services, _run, DataRepository.load_trinkets())
+	if _run.reward_state != null and not _run.reward_state.reward_completed:
+		_input_locked = true
+		_animation_in_progress = false
+		_clear_hand_buttons()
+		_apply_localization()
+		_reward_overlay.show_reward()
+		return
+	if _run.node_state != null and not _run.node_state.selection_confirmed:
+		_input_locked = true
+		_animation_in_progress = false
+		_clear_hand_buttons()
+		_apply_localization()
+		_map_overlay.configure(_services, _run.node_state)
+		_map_overlay.show_map()
+		return
+	if (
+		_run.node_state != null
+		and _run.node_state.selection_confirmed
+		and _run.node_state.selected_type in ["shop", "fountain", "treasure"]
+	):
+		_input_locked = true
+		_animation_in_progress = false
+		_clear_hand_buttons()
+		_apply_localization()
+		_special_node_overlay.configure(_services, _run, _node_flow)
+		_special_node_overlay.show_node(_run.node_state.selected_type)
+		return
 	var initial_draw := _hand_state.start_battle(
 		_deck,
 		fixed_battle_seed,
 		_battle.player_hand_size
 	)
-	_battle.health_changed.connect(_on_health_changed)
-	_player_health_bar.max_value = _battle.player_max_health
-	_enemy_health_bar.max_value = _battle.enemy_max_health
-	_log_events.clear()
 	_append_log_event("battle.start_log", [], [], "#f3d98b")
-	_finished_result = null
-	_result_overlay.visible = false
-	_feedback_label.text = ""
 	_input_locked = true
 	_animation_in_progress = true
-	_refresh_execution_count = 0
-	_on_health_changed(_battle.player_health, _battle.enemy_health)
 	_rebuild_hand_buttons(_id_set(initial_draw.drawn_cards))
 	_apply_localization()
 	call_deferred("_animate_initial_draw", initial_draw)
+
+
+func _retry_battle() -> void:
+	if _animation_in_progress:
+		return
+	_run.player_health = _run.player_max_health
+	_persist_run()
+	_start_battle()
 
 
 func _animate_initial_draw(result: DrawCommandResult) -> void:
@@ -444,7 +609,7 @@ func _rebuild_hand_buttons(hidden_ids: Dictionary = {}) -> void:
 
 
 func _on_card_toggled(is_pressed: bool, button: PokerCardButton) -> void:
-	if _input_locked or _battle.is_finished:
+	if _input_locked or _battle.is_finished or _is_rules_open():
 		button.set_pressed_no_signal(_hand_state.selected_cards().has(button.card_data))
 		return
 	var change := _hand_state.set_card_selected(button.card_data, is_pressed)
@@ -466,6 +631,12 @@ func _update_interaction() -> void:
 	var selected := _hand_state.selected_cards()
 	_selection_label.text = _services.t("battle.selected_count", [selected.size(), HandState.MAX_SELECTED])
 	var result := _evaluator.evaluate(selected)
+	if _trinket_runtime != null:
+		result = _trinket_runtime.preview_hand(
+			result,
+			_battle.enemy_type,
+			float(_battle.player_health) / float(_battle.player_max_health)
+		)
 	_preview_label.text = _localized_result_summary(result)
 	_play_button.text = _services.t("battle.confirm")
 	_play_button.disabled = selected.is_empty() or _input_locked or _battle.is_finished
@@ -478,6 +649,7 @@ func _update_interaction() -> void:
 	)
 	_restart_button.disabled = _animation_in_progress
 	_retry_button.disabled = _animation_in_progress
+	_rules_button.disabled = _input_locked or _battle.is_finished
 	for button in _card_buttons:
 		button.set_interaction_disabled(_input_locked or _battle.is_finished)
 		button.set_evaluation_state(
@@ -488,6 +660,8 @@ func _update_interaction() -> void:
 
 
 func _on_refresh_pressed() -> void:
+	if _is_rules_open():
+		return
 	if _animation_in_progress or _input_locked:
 		_show_feedback("battle.refresh_in_progress")
 		return
@@ -517,6 +691,8 @@ func _on_refresh_pressed() -> void:
 		[],
 		"#7dd3fc"
 	)
+	if _trinket_runtime != null:
+		_battle.gain_block(_trinket_runtime.block_after_refresh())
 	_update_interaction()
 	await _animate_cards_to_discard(result.removed_cards)
 	if result.draw_result.reshuffle_count() > 0:
@@ -532,13 +708,24 @@ func _on_refresh_pressed() -> void:
 
 
 func _on_play_pressed() -> void:
-	if _input_locked or _battle.is_finished or _hand_state.selected_cards().is_empty():
+	if (
+		_input_locked
+		or _battle.is_finished
+		or _hand_state.selected_cards().is_empty()
+		or _is_rules_open()
+	):
 		return
 	_input_locked = true
 	_animation_in_progress = true
 	_update_interaction()
 	var selected := _hand_state.selected_cards()
 	var result := _evaluator.evaluate(selected)
+	if _trinket_runtime != null:
+		result = _trinket_runtime.commit_hand(
+			result,
+			_battle.enemy_type,
+			float(_battle.player_health) / float(_battle.player_max_health)
+		)
 	_append_log_event(
 		"battle.play_log",
 		[_battle.round_number, result.display_name, result.damage],
@@ -546,6 +733,13 @@ func _on_play_pressed() -> void:
 		"#f3d98b"
 	)
 	var enemy_defeated := _battle.apply_player_hand(result)
+	if _trinket_runtime != null:
+		_battle.gain_block(_trinket_runtime.block_after_hand(result))
+		_hand_state.restore_refreshes(_trinket_runtime.refreshes_after_hand(result))
+		var base_healing := _trinket_runtime.healing_after_hand(result)
+		if base_healing > 0:
+			var healing_ratio := float(_battle.player_health) / float(_battle.player_max_health)
+			_battle.heal(roundi(base_healing * _trinket_runtime.healing_multiplier(healing_ratio)))
 	_animate_enemy_hit()
 	var retained_positions := _current_card_global_positions()
 	var discard_result := _hand_state.discard_selected_after_judgment()
@@ -559,13 +753,13 @@ func _on_play_pressed() -> void:
 		await _finish_battle(true)
 		return
 
+	var player_defeated := _battle.resolve_enemy_action()
 	_append_log_event(
 		"battle.counter_log",
-		[_battle.enemy_name_key, _battle.enemy_attack],
+		[_battle.enemy_name_key, _battle.last_enemy_damage],
 		[0],
 		"#ff9a9a"
 	)
-	var player_defeated := _battle.resolve_enemy_action()
 	await _wait(0.22)
 	if player_defeated:
 		await _finish_battle(false)
@@ -597,9 +791,33 @@ func _finish_battle(player_won: bool) -> void:
 	_apply_result_localization()
 	_animation_in_progress = false
 	_input_locked = true
+	_run.player_health = _battle.player_health
+	_persist_run()
 	await _wait(0.35)
-	_result_overlay.visible = true
-	_retry_button.disabled = false
+	if player_won:
+		_reward_generation_count += 1
+		var reward_seed := fixed_reward_seed
+		if reward_seed != 0:
+			reward_seed += _run.stage - 1
+		var reward_multiplier := 1.0
+		if _active_battle_type == "elite":
+			reward_multiplier = float(
+				(DataRepository.load_node_config().get("elite", {}) as Dictionary).get("reward_multiplier", 1.5)
+			)
+		_run.reward_state = _reward_generator.generate(
+			_run.stage,
+			_run,
+			reward_seed,
+			reward_multiplier,
+			_active_battle_type
+		)
+		_run.apply_reward_gold(_run.reward_state)
+		_persist_run()
+		_reward_overlay.configure(_services, _run, DataRepository.load_trinkets())
+		_reward_overlay.show_reward()
+	else:
+		_result_overlay.visible = true
+		_retry_button.disabled = false
 
 
 func _animate_cards_to_discard(cards: Array[CardData]) -> void:
@@ -716,7 +934,7 @@ func _animate_shuffle(_result: DrawCommandResult) -> void:
 
 
 func _open_pile_browser(kind: String) -> void:
-	if _input_locked or _battle == null or _battle.is_finished:
+	if _input_locked or _battle == null or _battle.is_finished or _is_rules_open():
 		return
 	_open_pile_kind = kind
 	_render_pile_browser()
@@ -853,6 +1071,17 @@ func _close_pile_browser() -> void:
 	_open_pile_kind = ""
 
 
+func _open_rules() -> void:
+	if _input_locked or _battle == null or _battle.is_finished:
+		return
+	_close_pile_browser()
+	_rules_overlay.show_rules()
+
+
+func _is_rules_open() -> bool:
+	return _rules_overlay != null and _rules_overlay.is_open()
+
+
 func _on_pile_overlay_input(event: InputEvent) -> void:
 	if (
 		event is InputEventMouseButton
@@ -864,7 +1093,10 @@ func _on_pile_overlay_input(event: InputEvent) -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and _pile_overlay.visible:
+	if event.is_action_pressed("ui_cancel") and _is_rules_open():
+		_rules_overlay.hide_rules()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_cancel") and _pile_overlay.visible:
 		if _card_detail_overlay.visible:
 			_close_card_detail()
 		else:
@@ -893,10 +1125,17 @@ func _update_pile_ui() -> void:
 
 
 func _on_health_changed(player_health: int, enemy_health: int) -> void:
+	if _run != null:
+		_run.player_health = player_health
 	_player_health_bar.value = player_health
 	_enemy_health_bar.value = enemy_health
 	_player_health_label.text = _services.t("battle.health", [player_health, _battle.player_max_health])
 	_enemy_health_label.text = _services.t("battle.health", [enemy_health, _battle.enemy_max_health])
+
+
+func _on_block_changed(player_block: int) -> void:
+	if _player_block_label != null:
+		_player_block_label.text = _services.t("battle.block", [player_block])
 
 
 func _on_language_changed(_language_code: String) -> void:
@@ -909,23 +1148,31 @@ func _apply_localization() -> void:
 	_title_label.text = _services.t("app.title")
 	_subtitle_label.text = _services.t("battle.prototype")
 	_round_label.text = _services.t("battle.round", [_battle.round_number])
+	_stage_label.text = _services.t("run.stage", [_run.stage])
+	_gold_label.text = _services.t("run.gold", [_run.gold])
 	_restart_button.text = _services.t("battle.restart")
 	_player_title.text = _services.t("battle.player")
 	_player_hint.text = _services.t("battle.player_hint")
-	_rules_label.text = _services.t("battle.rules")
+	_rules_button.text = _services.t("battle.rules_button")
+	_rules_overlay.apply_localization()
 	_log_title.text = _services.t("battle.log_title")
-	_enemy_caption.text = _services.t("battle.enemy_type")
+	_enemy_caption.text = _services.t(
+		"battle.elite_type" if _battle.enemy_type == "elite" else "battle.enemy_type"
+	)
 	_enemy_name_label.text = _services.t(_battle.enemy_name_key)
 	_intent_caption.text = _services.t("battle.intent_caption")
-	_enemy_intent_label.text = _services.t(_battle.enemy_intent_key)
+	_enemy_intent_label.text = _services.t(_battle.enemy_intent_key, [_battle.enemy_attack])
 	_hand_title.text = _services.t("battle.hand")
 	_retry_button.text = _services.t("result.retry")
 	_on_health_changed(_battle.player_health, _battle.enemy_health)
+	_on_block_changed(_battle.player_block)
 	_update_interaction()
 	_render_log()
 	_apply_result_localization()
 	if _pile_overlay.visible:
 		_render_pile_browser()
+	if _reward_overlay != null and _reward_overlay.visible:
+		_reward_overlay.render()
 
 
 func _apply_result_localization() -> void:
@@ -942,6 +1189,172 @@ func _apply_result_localization() -> void:
 		_result_title.text = _services.t("result.defeat")
 		_result_title.add_theme_color_override("font_color", Color("#ff9a9a"))
 		_result_detail.text = _services.t("result.defeat_detail")
+
+
+func _on_reward_remove_confirmed(instance_id: int) -> void:
+	if _run.remove_reward_card(instance_id):
+		_persist_run()
+		_reward_overlay.return_to_overview()
+
+
+func _on_reward_remove_skipped() -> void:
+	if _run.skip_remove_card():
+		_persist_run()
+		_reward_overlay.return_to_overview()
+
+
+func _on_reward_trinket_claim(replace_id: String) -> void:
+	if _run.claim_trinket(replace_id):
+		_persist_run()
+		_reward_overlay.return_to_overview()
+
+
+func _on_reward_trinket_skipped() -> void:
+	if _run.skip_trinket():
+		_persist_run()
+		_reward_overlay.return_to_overview()
+
+
+func _on_reward_card_choice_open() -> void:
+	if _run.open_card_choice():
+		_persist_run()
+		_reward_overlay.render()
+
+
+func _on_reward_card_choice_skipped() -> void:
+	if _run.skip_card_choice():
+		_persist_run()
+		_reward_overlay.return_to_overview()
+
+
+func _on_reward_card_chosen(instance_id: int) -> void:
+	if _run.choose_card(instance_id):
+		_persist_run()
+		_reward_overlay.return_to_overview()
+
+
+func _on_reward_continue() -> void:
+	if not _node_flow.complete_battle_reward_and_generate(_run, _next_map_seed()):
+		return
+	_persist_run()
+	_reward_overlay.hide_reward()
+	_start_battle()
+
+
+func _on_map_candidate_selected(index: int) -> void:
+	if _node_flow.select_candidate(_run, index):
+		_persist_run()
+		_map_overlay.configure(_services, _run.node_state)
+
+
+func _on_map_selection_cancelled() -> void:
+	if _node_flow.cancel_candidate_selection(_run):
+		_persist_run()
+		_map_overlay.configure(_services, _run.node_state)
+
+
+func _on_map_destination_confirmed(index: int) -> void:
+	if _run.node_state == null or _run.node_state.selected_index != index:
+		return
+	if not _node_flow.confirm_and_enter(_run, _next_content_seed()):
+		return
+	_persist_run()
+	_start_battle()
+
+
+func _on_shop_remove_confirmed(instance_id: int) -> void:
+	if _node_flow.shop_remove_card(_run, instance_id):
+		_persist_run()
+		_special_node_overlay.return_to_main()
+
+
+func _on_shop_card_purchase() -> void:
+	if _node_flow.shop_begin_card_purchase(_run):
+		_persist_run()
+		_special_node_overlay.show_shop_card_choice()
+
+
+func _on_shop_card_chosen(instance_id: int) -> void:
+	if _node_flow.shop_choose_card(_run, instance_id):
+		_persist_run()
+		_special_node_overlay.return_to_main()
+
+
+func _on_shop_heal() -> void:
+	if _node_flow.shop_heal(_run) > 0:
+		_persist_run()
+		_special_node_overlay.render()
+
+
+func _on_shop_trinket_requested(trinket_id: String, replace_id: String) -> void:
+	if _node_flow.shop_buy_trinket(_run, trinket_id, replace_id):
+		_persist_run()
+		_special_node_overlay.return_to_main()
+	elif _run.shop_state != null and not _run.shop_state.pending_trinket_id.is_empty():
+		_persist_run()
+		_special_node_overlay.show_shop_trinket_replacement()
+
+
+func _on_shop_trinket_replacement_cancelled() -> void:
+	if _node_flow.shop_cancel_trinket_replacement(_run):
+		_persist_run()
+		_special_node_overlay.return_to_main()
+
+
+func _on_shop_leave() -> void:
+	_complete_special_node()
+
+
+func _on_fountain_continue() -> void:
+	_complete_special_node()
+
+
+func _on_treasure_open() -> void:
+	if _node_flow.treasure_open(_run):
+		_persist_run()
+		_special_node_overlay.show_treasure_choice()
+
+
+func _on_treasure_skip() -> void:
+	if _node_flow.treasure_skip(_run):
+		_persist_run()
+		_complete_special_node()
+
+
+func _on_treasure_trinket_requested(trinket_id: String, replace_id: String) -> void:
+	if _node_flow.treasure_choose(_run, trinket_id, replace_id):
+		_persist_run()
+		_complete_special_node()
+	elif _run.treasure_state != null and not _run.treasure_state.pending_trinket_id.is_empty():
+		_persist_run()
+		_special_node_overlay.show_treasure_replacement()
+
+
+func _complete_special_node() -> void:
+	if not _node_flow.complete_special_node_and_generate(_run, _next_map_seed()):
+		return
+	_persist_run()
+	_special_node_overlay.hide_node()
+	_start_battle()
+
+
+func _next_map_seed() -> int:
+	_map_generation_count += 1
+	if fixed_map_seed != 0:
+		return fixed_map_seed + _map_generation_count - 1
+	return Time.get_ticks_usec()
+
+
+func _next_content_seed() -> int:
+	_content_generation_count += 1
+	if fixed_map_seed != 0:
+		return fixed_map_seed + 100000 + _content_generation_count - 1
+	return Time.get_ticks_usec()
+
+
+func _persist_run() -> void:
+	if run_state_override == null:
+		_services.save_run()
 
 
 func _localized_result_summary(result: PokerHandResult) -> String:

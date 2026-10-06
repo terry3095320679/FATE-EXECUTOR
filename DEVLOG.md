@@ -1,5 +1,48 @@
 # Development Log
 
+## 2026-10-05 — Player-first distribution
+
+- Replaced the developer-oriented public README with two primary player actions: browser play and a direct Windows executable download.
+- Added Godot 4.7.1 single-threaded Web and embedded-PCK Windows export presets.
+- Added a GitHub Actions publishing workflow that deploys the Web build to GitHub Pages from `main` and attaches a single-file Windows build to version releases.
+- Kept generated builds out of source control through the `build/` ignore rule.
+- Re-ran the complete automated suite: 1065 passed, 0 failed, and 0 skipped; headless main-scene startup also passed.
+
+## 2026-08-04 — Three-node map and special nodes
+
+- Added a deterministic three-choice route after each completed node using independent 35% Battle, 10% Shop, 20% Elite, 15% Fountain, and 20% Treasure rolls; duplicate choices remain legal.
+- Added saved `NodeState`, `ShopState`, and `TreasureState` transactions so map candidates, shop purchases, mandatory card choices, and opened treasure choices survive reloads unchanged.
+- Added Elite encounters with 1.5× rounded health and attack, 1.5× rounded Gold, and independent 60% / 90% / 100% optional reward chances.
+- Added per-visit shops with two 15-Gold removals, three 5-Gold forced card choices, one 20-Gold 30%-max-health heal, and six unique priced trinkets.
+- Added free 30%-max-health Fountains and optional-before-opening, mandatory-after-opening three-trinket Treasures.
+- Expanded the trinket pool from six to twelve and implemented Twin Lens, Silver Compass, Funeral Cup, Black Wax Seal, Razor Ribbon, and Fourfold Crown.
+- Added persistent run Health and node progress; every Battle, Elite, Shop, Fountain, and Treasure completion advances the global stage.
+- Added map seed `7` for `[Shop, Fountain, Treasure]`, shop inventory seed `90001`, and the complete battle-reward → map → shop → next-map trace.
+- Expanded the automated suite from 890 to 1065 checks; 1065 passed, 0 failed, and 0 skipped.
+
+## 2026-08-04 — Normal stages, enemy growth, and victory rewards
+
+- Added persistent run progression beginning at Stage 1 and a localized Continue flow between normal battles.
+- Replaced the fixed Debt Gambler values with configurable quadratic health and attack formulas plus a 40-damage normal-enemy cap.
+- Added a separate deterministic reward RNG stream with automatic 5–15 Gold and independent 40% remove-card, 60% trinket, and 80% card-choice rolls.
+- Added reversible reward navigation, confirmed permanent card removal, a minimum 20-card run deck, six trinket slots, and explicit full-slot replacement.
+- Added six data-driven common trinkets and their battle effects: Sharpened Clip, Split Coin, Straight Ruler, Velvet Thread, Cracked Hourglass, and Hunter's Mark.
+- Added an irrevocable five-card choice after opening; exact candidates and `must_choose` state persist in `user://fate_executor/run.json`.
+- Added the read-only `RewardState` serialization boundary and a reward overlay that never draws random outcomes.
+- Expanded the automated suite from 552 to 890 checks; 890 passed, 0 failed, and 0 skipped.
+- Added reward seed `8` as the all-three-offers reproduction trace and seed `62` as the no-optional-reward case.
+
+## 2026-08-04 — Ace-high rules and in-battle rules page
+
+- Changed Ace from 1 to 14 across deck data, evaluation, scoring, previews, hand display, and pile browsing.
+- Made 10-J-Q-K-A a valid Straight and Straight Flush.
+- Removed A-2-3-4-5 and Q-K-A-2-3 from the legal Straight set; straights cannot wrap.
+- Replaced the permanent two-line rule hint in the player panel with a localized **Rules** button.
+- Added a read-only, scrollable rules page covering card values, a consolidated play/refresh/pile section, all nine poker hands, scoring cards, multipliers, and damage calculation.
+- Simplified the rules page by removing redundant Ace, selection, turn-flow, and pile-view explanations in both languages.
+- Rules can be closed with Close, Back, Esc, or a click outside the panel and do not pause or mutate combat state.
+- Expanded the automated suite from 476 to 552 checks; 552 passed, 0 failed, and 0 skipped.
+
 ## 2026-08-04 — v0.1 source release
 
 - Established the first public version as **v0.1**.
@@ -28,7 +71,7 @@ This revision superseded the earlier rule that discarded all eight cards after j
 - Draw and discard browsers always render four rows: Spades, Hearts, Clubs, and Diamonds.
 - Empty rows remain visible and use localized empty-state text.
 - English singular/plural counts distinguish `Card` and `Cards`; Chinese uses `张`.
-- Cards in a row are ordered K → A, with equal-rank duplicates stabilized by `instance_id`.
+- Cards in a row use descending rank order with equal-rank duplicates stabilized by `instance_id` (later revised to A → 2 when Ace became 14).
 - Selecting a browser card opens read-only details and cannot affect hand selection.
 - Browser creation neither changes the internal pile order nor consumes RNG state.
 

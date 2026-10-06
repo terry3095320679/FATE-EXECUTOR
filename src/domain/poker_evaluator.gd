@@ -1,6 +1,9 @@
 class_name PokerEvaluator
 extends RefCounted
 
+const MIN_STRAIGHT_RANK := 2
+const ACE_HIGH_RANK := 14
+
 var _rules: Dictionary
 
 
@@ -123,12 +126,18 @@ func _all_same_suit(cards_to_check: Array[CardData]) -> bool:
 
 
 func _is_straight(cards_to_check: Array[CardData]) -> bool:
+	if cards_to_check.size() != 5:
+		return false
 	var ranks: Array[int] = []
 	for card in cards_to_check:
+		if card.rank < MIN_STRAIGHT_RANK or card.rank > ACE_HIGH_RANK:
+			return false
 		if ranks.has(card.rank):
 			return false
 		ranks.append(card.rank)
 	ranks.sort()
+	if ranks[ranks.size() - 1] - ranks[0] != 4:
+		return false
 	for index in range(1, ranks.size()):
 		if ranks[index] != ranks[index - 1] + 1:
 			return false

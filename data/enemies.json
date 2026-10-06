@@ -2,9 +2,17 @@
   "enemies": [
     {
       "id": "debt_gambler",
+      "enemy_type": "normal",
       "name_key": "enemy.debt_gambler.name",
-      "max_health": 72,
-      "attack": 8,
+      "base_health": 35.0,
+      "health_linear": 5.0,
+      "health_quadratic": 0.12,
+      "base_attack": 5.0,
+      "attack_linear": 0.55,
+      "attack_quadratic": 0.015,
+      "attack_cap": 40,
+      "health_multiplier": 1.0,
+      "attack_multiplier": 1.0,
       "intent_key": "enemy.debt_gambler.intent",
       "description_key": "enemy.debt_gambler.description"
     }

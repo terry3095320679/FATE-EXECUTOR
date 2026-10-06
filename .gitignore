@@ -3,6 +3,7 @@
 *.log
 .codex/
 .agents/
+build/
 test-artifacts/*
 !test-artifacts/.gitkeep
 

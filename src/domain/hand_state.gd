@@ -59,6 +59,13 @@ func can_refresh() -> bool:
 	)
 
 
+func restore_refreshes(amount: int) -> int:
+	if amount <= 0:
+		return refreshes_remaining
+	refreshes_remaining = mini(MAX_REFRESHES, refreshes_remaining + amount)
+	return refreshes_remaining
+
+
 func refresh_selected() -> RefreshCommandResult:
 	var before := refreshes_remaining
 	if not can_refresh():

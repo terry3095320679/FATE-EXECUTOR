@@ -5,6 +5,9 @@ const DECK_PATH := "res://data/deck.json"
 const HANDS_PATH := "res://data/poker_hands.json"
 const ENEMIES_PATH := "res://data/enemies.json"
 const LOCALIZATION_PATH := "res://data/localization.json"
+const REWARDS_PATH := "res://data/rewards.json"
+const TRINKETS_PATH := "res://data/trinkets.json"
+const NODES_PATH := "res://data/nodes.json"
 
 
 static func load_deck_definition() -> Dictionary:
@@ -30,6 +33,22 @@ static func load_enemy(enemy_id: StringName) -> Dictionary:
 
 static func load_localization() -> Dictionary:
 	return _load_json(LOCALIZATION_PATH)
+
+
+static func load_reward_config() -> Dictionary:
+	return _load_json(REWARDS_PATH)
+
+
+static func load_trinkets() -> Array[Dictionary]:
+	var payload := _load_json(TRINKETS_PATH)
+	var output: Array[Dictionary] = []
+	for raw_trinket: Dictionary in payload.get("trinkets", []):
+		output.append(raw_trinket.duplicate(true))
+	return output
+
+
+static func load_node_config() -> Dictionary:
+	return _load_json(NODES_PATH)
 
 
 static func _load_json(path: String) -> Dictionary:

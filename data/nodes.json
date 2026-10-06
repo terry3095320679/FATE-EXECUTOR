@@ -1,0 +1,26 @@
+{
+  "node_types": [
+    { "id": "battle", "chance": 0.35, "name_key": "node.battle", "description_key": "node.battle.description", "icon": "⚔", "dangerous": true },
+    { "id": "shop", "chance": 0.10, "name_key": "node.shop", "description_key": "node.shop.description", "icon": "◆", "dangerous": false },
+    { "id": "elite", "chance": 0.20, "name_key": "node.elite", "description_key": "node.elite.description", "icon": "☠", "dangerous": true },
+    { "id": "fountain", "chance": 0.15, "name_key": "node.fountain", "description_key": "node.fountain.description", "icon": "✦", "dangerous": false },
+    { "id": "treasure", "chance": 0.20, "name_key": "node.treasure", "description_key": "node.treasure.description", "icon": "▣", "dangerous": false }
+  ],
+  "elite": {
+    "stat_multiplier": 1.5,
+    "reward_multiplier": 1.5
+  },
+  "shop": {
+    "remove_card": { "price": 15, "uses": 2 },
+    "buy_card": { "price": 5, "uses": 3, "candidate_count": 5 },
+    "heal": { "price": 20, "uses": 1, "max_health_fraction": 0.30 },
+    "trinket_inventory_count": 6,
+    "black_wax_discount": 0.10
+  },
+  "fountain": {
+    "max_health_fraction": 0.30
+  },
+  "treasure": {
+    "candidate_count": 3
+  }
+}

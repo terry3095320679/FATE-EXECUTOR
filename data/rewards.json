@@ -1,0 +1,16 @@
+{
+  "run": {
+    "initial_stage": 1,
+    "initial_gold": 0,
+    "minimum_deck_size": 20,
+    "trinket_slots": 6
+  },
+  "normal_battle": {
+    "gold_min": 5,
+    "gold_max": 15,
+    "remove_card_chance": 0.40,
+    "trinket_chance": 0.60,
+    "card_choice_chance": 0.80,
+    "card_choice_count": 5
+  }
+}

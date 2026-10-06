@@ -35,3 +35,10 @@ func display_name() -> String:
 func debug_key() -> String:
 	return "%s_%s_%d" % [suit_name, rank_label, instance_id]
 
+
+func to_record() -> Dictionary:
+	return {
+		"instance_id": instance_id,
+		"rank": rank,
+		"suit": suit
+	}

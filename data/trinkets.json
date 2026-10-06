@@ -1,0 +1,116 @@
+{
+  "trinkets": [
+    {
+      "id": "sharpened_clip",
+      "name_key": "trinket.sharpened_clip.name",
+      "effect_key": "trinket.sharpened_clip.effect",
+      "rarity": "common",
+      "price": 40,
+      "effect": "first_pair_base_power",
+      "value": 3
+    },
+    {
+      "id": "split_coin",
+      "name_key": "trinket.split_coin.name",
+      "effect_key": "trinket.split_coin.effect",
+      "rarity": "common",
+      "price": 38,
+      "effect": "two_pair_block",
+      "value": 5
+    },
+    {
+      "id": "straight_ruler",
+      "name_key": "trinket.straight_ruler.name",
+      "effect_key": "trinket.straight_ruler.effect",
+      "rarity": "common",
+      "price": 45,
+      "effect": "straight_damage_percent",
+      "value": 0.08
+    },
+    {
+      "id": "velvet_thread",
+      "name_key": "trinket.velvet_thread.name",
+      "effect_key": "trinket.velvet_thread.effect",
+      "rarity": "common",
+      "price": 40,
+      "effect": "flush_block_per_scoring_card",
+      "value": 1
+    },
+    {
+      "id": "cracked_hourglass",
+      "name_key": "trinket.cracked_hourglass.name",
+      "effect_key": "trinket.cracked_hourglass.effect",
+      "rarity": "common",
+      "price": 42,
+      "effect": "first_refresh_block",
+      "value": 4
+    },
+    {
+      "id": "hunters_mark",
+      "name_key": "trinket.hunters_mark.name",
+      "effect_key": "trinket.hunters_mark.effect",
+      "rarity": "common",
+      "price": 45,
+      "effect": "elite_boss_damage_percent",
+      "value": 0.06
+    },
+    {
+      "id": "twin_lens",
+      "name_key": "trinket.twin_lens.name",
+      "effect_key": "trinket.twin_lens.effect",
+      "rarity": "common",
+      "price": 42,
+      "effect": "pair_multiplier",
+      "value": 0.15
+    },
+    {
+      "id": "silver_compass",
+      "name_key": "trinket.silver_compass.name",
+      "effect_key": "trinket.silver_compass.effect",
+      "rarity": "common",
+      "price": 48,
+      "effect": "first_straight_refresh",
+      "value": 1
+    },
+    {
+      "id": "funeral_cup",
+      "name_key": "trinket.funeral_cup.name",
+      "effect_key": "trinket.funeral_cup.effect",
+      "rarity": "common",
+      "price": 52,
+      "effect": "full_house_heal",
+      "value": 3,
+      "trigger_limit": 3
+    },
+    {
+      "id": "black_wax_seal",
+      "name_key": "trinket.black_wax_seal.name",
+      "effect_key": "trinket.black_wax_seal.effect",
+      "rarity": "common",
+      "price": 55,
+      "effect": "shop_discount",
+      "value": 0.10
+    },
+    {
+      "id": "razor_ribbon",
+      "name_key": "trinket.razor_ribbon.name",
+      "effect_key": "trinket.razor_ribbon.effect",
+      "rarity": "common",
+      "price": 50,
+      "effect": "low_health_damage_healing",
+      "damage_value": 0.18,
+      "healing_penalty": 0.25,
+      "health_threshold": 0.35
+    },
+    {
+      "id": "fourfold_crown",
+      "name_key": "trinket.fourfold_crown.name",
+      "effect_key": "trinket.fourfold_crown.effect",
+      "rarity": "common",
+      "price": 75,
+      "effect": "four_kind_multiplier_block",
+      "multiplier_value": 0.40,
+      "block_value": 13
+    }
+  ]
+}

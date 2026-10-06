@@ -1,0 +1,123 @@
+name: Publish playable builds
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.7.1"
+  GODOT_RELEASE: "4.7.1-stable"
+
+jobs:
+  web:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out the game
+        uses: actions/checkout@v6
+
+      - name: Install Godot and export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/godot /tmp/templates
+          curl -fL --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip" \
+            -o /tmp/godot/editor.zip
+          unzip -q /tmp/godot/editor.zip -d /tmp/godot
+          mv "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /tmp/godot/godot
+          chmod +x /tmp/godot/godot
+
+          curl -fL --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz" \
+            -o /tmp/templates/export_templates.tpz
+          unzip -q /tmp/templates/export_templates.tpz -d /tmp/templates/unpacked
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          cp -R /tmp/templates/unpacked/templates/. \
+            "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Export browser build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/web
+          /tmp/godot/godot --headless --path . \
+            --export-release "Web" build/web/index.html
+          touch build/web/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
+      - name: Deploy browser build
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  windows:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the game
+        uses: actions/checkout@v6
+
+      - name: Install Godot and export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/godot /tmp/templates
+          curl -fL --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip" \
+            -o /tmp/godot/editor.zip
+          unzip -q /tmp/godot/editor.zip -d /tmp/godot
+          mv "/tmp/godot/Godot_v${GODOT_RELEASE}_linux.x86_64" /tmp/godot/godot
+          chmod +x /tmp/godot/godot
+
+          curl -fL --retry 3 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz" \
+            -o /tmp/templates/export_templates.tpz
+          unzip -q /tmp/templates/export_templates.tpz -d /tmp/templates/unpacked
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          cp -R /tmp/templates/unpacked/templates/. \
+            "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
+
+      - name: Export single-file Windows build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/windows
+          /tmp/godot/godot --headless --path . \
+            --export-release "Windows Desktop" build/windows/FATE_EXECUTOR.exe
+          cp build/windows/FATE_EXECUTOR.exe FATE_EXECUTOR_Windows_x64.exe
+
+      - name: Publish Windows download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              FATE_EXECUTOR_Windows_x64.exe --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              FATE_EXECUTOR_Windows_x64.exe \
+              --title "FATE EXECUTOR $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

@@ -13,6 +13,9 @@ FATE EXECUTOR/
 │   ├── deck.json
 │   ├── poker_hands.json
 │   ├── enemies.json
+│   ├── rewards.json
+│   ├── trinkets.json
+│   ├── nodes.json
 │   └── localization.json
 ├── scenes/
 │   ├── main.tscn
@@ -32,26 +35,46 @@ FATE EXECUTOR/
 │   │   ├── pile_snapshot.gd
 │   │   ├── poker_hand_result.gd
 │   │   ├── poker_evaluator.gd
-│   │   └── battle_state.gd
+│   │   ├── battle_state.gd
+│   │   ├── enemy_scaler.gd
+│   │   ├── run_state.gd
+│   │   ├── reward_state.gd
+│   │   ├── reward_generator.gd
+│   │   ├── trinket_runtime.gd
+│   │   ├── node_state.gd
+│   │   ├── shop_state.gd
+│   │   ├── treasure_state.gd
+│   │   ├── node_generator.gd
+│   │   ├── card_offer_generator.gd
+│   │   └── node_flow_service.gd
 │   ├── infrastructure/
 │   │   ├── data_repository.gd
 │   │   ├── localization_service.gd
-│   │   └── settings_repository.gd
+│   │   ├── settings_repository.gd
+│   │   └── run_save_repository.gd
 │   └── ui/
 │       ├── main_screen.gd
 │       ├── battle_screen.gd
-│       └── poker_card_button.gd
+│       ├── poker_card_button.gd
+│       ├── rules_overlay.gd
+│       ├── reward_overlay.gd
+│       ├── map_overlay.gd
+│       └── special_node_overlay.gd
 └── tests/
     ├── test_runner.gd
-    └── fixed_seed_trace.gd
+    ├── fixed_seed_trace.gd
+    ├── reward_seed_trace.gd
+    └── node_seed_trace.gd
 ```
 
 ## Dependency direction
 
 ```text
-MainScreen / BattleScreen / PokerCardButton
+MainScreen / BattleScreen / PokerCardButton / RulesOverlay / RewardOverlay / MapOverlay / SpecialNodeOverlay
         → AppServices / LocalizationService / SettingsRepository
-        → HandState / BattleState / PokerEvaluator
+        → RunSaveRepository / RunState / RewardState / RewardGenerator
+        → NodeFlowService / NodeGenerator / NodeState / ShopState / TreasureState
+        → EnemyScaler / TrinketRuntime / HandState / BattleState / PokerEvaluator
         → BattleDeckState / HandSelection / CardDisplayOrder
         → Deck / CardData / Command Results / PokerHandResult
 ```
@@ -60,11 +83,106 @@ The domain layer does not depend on scene-tree UI nodes. The UI submits commands
 
 ## Data-driven configuration
 
-`DataRepository` loads the base deck, poker-hand definitions, enemy data, and localization strings from JSON. This keeps the prototype open to future cards, poker hands, enemies, and languages without coupling those definitions to the battle UI.
+`DataRepository` loads the base deck, poker-hand definitions, enemy formulas, reward probabilities, node probabilities, shop rules, trinket definitions, and localization strings from JSON. The complete bilingual rules text also lives in localization data rather than UI scripts.
+
+## Run progression and enemy scaling
+
+`RunState` owns the current stage, Health, Gold, permanent run deck, owned trinket IDs, slot limits, minimum deck size, and unresolved reward or node state. A completed battle reward advances the stage exactly once before the next map is built.
+
+`EnemyScaler.generate()` evaluates the formula fields in `data/enemies.json` for the requested stage. The current Debt Gambler uses:
+
+```text
+health = round(35 + 5 × (stage - 1) + 0.12 × (stage - 1)²)
+attack = min(40, round(5 + 0.55 × (stage - 1) + 0.015 × (stage - 1)²))
+```
+
+The generated record carries `stage`, `base_health`, `final_health`, `base_attack`, `final_attack`, and `enemy_type`; `BattleState` consumes that record without knowing the formula.
+
+## Victory reward transaction
+
+`RewardGenerator` owns the separate reward RNG stream. For a fixed seed it performs the transaction in this order:
+
+1. Uniform integer Gold roll in the inclusive 5–15 range.
+2. Independent remove-card roll against 0.40.
+3. Independent trinket roll against 0.60.
+4. Independent five-card-choice roll against 0.80.
+5. If offered, select one unowned trinket and five distinct standard rank/suit candidates.
+
+The complete outcome is stored in `RewardState` before `RewardOverlay` opens. Gold is applied once. The overlay only emits claim, skip, open, choose, and continue commands; it never consumes RNG. Opening the card choice sets `must_choose` and persists immediately. Continue is valid only after every offered reward is claimed or explicitly skipped.
+
+Permanent card removal and addition are methods on `Deck`. Card removal enforces the configured 20-card minimum and both operations preserve unique instance IDs. Candidate rank/suit combinations may duplicate cards already owned, but candidate instance IDs are new.
+
+## Basic trinket runtime
+
+`TrinketRuntime` is reconstructed from `RunState.trinket_ids` for each battle. It applies preview-safe or committed hand modifiers and exposes Block triggers for played hands and refreshes. Preview calls never consume first-use triggers. `BattleState` owns Block and absorbs it before player health damage.
+
+Hunter's Mark is stored and implemented for `elite` and `boss` enemy types even though this stage only generates normal enemies.
+
+## Run persistence
+
+`RunSaveRepository` serializes the run to:
+
+```text
+user://fate_executor/run.json
+```
+
+The save contains stage, Gold, permanent card records, trinkets, and the complete unresolved reward state. Reloading an opened five-card choice restores the exact candidate instance IDs and `must_choose` flag instead of generating new candidates. Combat pile order and in-battle transient state are not written into the run save.
+
+The same save now also includes persistent Health, `NodeState`, `ShopState`, and `TreasureState`. Paid shop card candidates and opened Treasure candidates therefore resume without a second charge or reroll.
+
+## Deterministic map and node lifecycle
+
+`data/nodes.json` is the single source for node probabilities, Elite multipliers, shop limits and prices, Fountain healing, and Treasure candidate count. `NodeGenerator` consumes only its dedicated map seed and performs three independent sequential rolls. It never removes duplicate results or consumes battle, reward, shop, or treasure RNG state.
+
+`NodeState` records the current stage, all three candidates, seed, selected index and type, confirmation, entry, completion, and node resolution. Selection can be cancelled before confirmation. After confirmation, the other two candidates are invalidated.
+
+```text
+complete current node
+→ increment global stage
+→ generate and save three candidates
+→ select and confirm one candidate
+→ create and save node content
+→ enter Battle, Elite, Shop, Fountain, or Treasure
+```
+
+The run still opens with the Stage 1 teaching battle. Its completed reward creates the first map for Stage 2. Every later node—including Shop, Fountain, and Treasure—advances the same global stage.
+
+## Elite battle projection
+
+`EnemyScaler.generate_elite()` starts from the normal enemy generated for the current stage, then applies and rounds the configured 1.5 health and attack multiplier. The generated `enemy_type` is `elite`, allowing the existing battle UI and Hunter's Mark to distinguish it without introducing a second behavior implementation.
+
+`RewardGenerator.generate()` accepts a reward multiplier. Elite Gold is the seeded normal 5–15 result multiplied by 1.5 and rounded. Each optional probability is independently multiplied and clamped to 1.0, producing 0.60 remove, 0.90 trinket, and 1.00 card choice.
+
+## Shop transaction
+
+`ShopState` owns one visit's inventory seed, service uses, six unique unowned trinkets, sold flags, price snapshot, and any paid mandatory card choice.
+
+- Removal validates Gold, remaining uses, and minimum deck size before atomically removing a card and charging 15 Gold.
+- Card purchase atomically charges 5 Gold, decrements a use, creates five candidates from a shop-only derived seed, sets `must_choose_card`, and saves before selection.
+- Healing charges only after a positive heal is calculated, restores 30% max Health, and clamps to maximum Health.
+- Full trinket slots create a pending replacement without charging. Confirming a replacement charges once; cancelling charges nothing.
+
+Black Wax Seal is evaluated when the shop is created. Every service and product price is rounded into `price_snapshot` at entry. Buying the seal cannot recursively reprice the current shop.
+
+## Fountain and Treasure transactions
+
+Fountain entry immediately records Health before, actual restored amount, and Health after. It spends no Gold. Continue completes the node.
+
+`TreasureState` stores its independent seed and three unique unowned candidates. Before opening, the Treasure can be abandoned. Opening sets `must_choose` and saves immediately. After opening there is no cancel path; full slots require explicit replacement before completion.
+
+## Extended trinket hooks
+
+`TrinketRuntime` exposes committed-hand hooks for refresh restoration and limited healing in addition to damage and Block modifiers. Preview evaluation remains side-effect free. Persistent run healing uses the same Razor Ribbon penalty in Shops and Fountains.
+
+## Ace-high poker rules
+
+`data/deck.json` defines Ace as rank 14. The run deck and combat deck therefore carry the same value through grouping, highest-card selection, Base Power, damage previews, and final damage.
+
+`PokerEvaluator._is_straight()` accepts exactly five unique, consecutive ranks in the inclusive range 2～14. This makes 10-J-Q-K-A valid while rejecting A-2-3-4-5, Q-K-A-2-3, rank wrapping, and any attempt to reinterpret Ace as 1.
 
 ## Run deck versus combat deck
 
-`Deck` owns the player's current 52 base card instances for the run. At battle start, `BattleDeckState.initialize()` registers those instances for the current fight without writing combat order back to the run deck.
+`Deck` owns the player's permanent card instances for the run; a new run starts with 52. At battle start, `BattleDeckState.initialize()` registers the current instances for the fight without writing combat order back to the run deck.
 
 `BattleDeckState` is the sole owner of:
 
@@ -141,12 +259,12 @@ Victory or defeat calls `HandState.clear_battle()`. Retry rebuilds a fresh comba
 
 `CardDisplayOrder.descending()` is the single rank-ordering entry point for hand display:
 
-- Rank descending: K → A.
+- Rank descending: A → 2.
 - Equal ranks by suit ID ascending: Clubs → Diamonds → Hearts → Spades.
 
 `HandState.display_cards()` and pile views return new arrays. They preserve internal hand order, draw-pile top, selection order, and RNG state.
 
-`BattleDeckState.pile_snapshot()` returns a read-only `PileSnapshot` grouped for the browser as Spades, Hearts, Clubs, and Diamonds. Each row is K → A and equal-rank duplicates use ascending `instance_id`. Empty standard-suit rows remain present. An extra Wild group is created only if an unknown suit actually exists; v0.1 does not create wild cards.
+`BattleDeckState.pile_snapshot()` returns a read-only `PileSnapshot` grouped for the browser as Spades, Hearts, Clubs, and Diamonds. Each row is A → 2 and equal-rank duplicates use ascending `instance_id`. Empty standard-suit rows remain present. An extra Wild group is created only if an unknown suit actually exists; the current prototype does not create wild cards.
 
 ## Rules versus animation
 
@@ -169,6 +287,12 @@ All visible English and Simplified Chinese strings come from `data/localization.
 user://fate_executor/settings.json
 ```
 
+## Read-only rules page
+
+`RulesOverlay` is a presentation-only component owned by `BattleScreen`. It builds a scrollable hierarchy of section and poker-hand entries from stable localization keys. Full English and Simplified Chinese text remains in `data/localization.json`.
+
+Opening or closing the overlay changes only its visibility. It does not pause the scene tree, submit a domain command, inspect or consume RNG, or mutate the hand, selection, refresh count, battle state, draw pile, or discard pile. `BattleScreen` disables the Rules button while input is locked and rejects programmatic play/refresh/pile actions while the overlay is open.
+
 ## Superseded prototype rules
 
 The following early-design rules are no longer active in v0.1:
@@ -180,6 +304,8 @@ The following early-design rules are no longer active in v0.1:
 - Hand display is ascending A → K.
 - Judgment discards the entire eight-card hand.
 - Every new player round always draws eight cards.
+- Ace has rank 1 or can form A-2-3-4-5.
+- 10-J-Q-K-A is not a Straight.
 
 The active model is a real draw-pile → hand → discard-pile → reshuffle cycle, with unplayed cards retained and only missing hand slots refilled.
 
@@ -190,14 +316,46 @@ Seed `424242` currently reproduces:
 ```text
 initial draw: [18, 27, 9, 14, 50, 26, 37, 24]
 zones: draw=44, hand=8, discard=0
-played: [26, 24, 37]
-retained: [18, 27, 9, 14, 50]
+played: [14, 27, 26]
+retained: [18, 9, 50, 37, 24]
 after judgment: draw=44, hand=5, discard=3
 refill requested: 3
 drawn: [1, 48, 30]
-final internal hand: [18, 27, 9, 14, 50, 1, 48, 30]
-final display order: [50, 9, 48, 18, 30, 1, 14, 27]
+final internal hand: [18, 9, 50, 37, 24, 1, 48, 30]
+final display order: [1, 24, 37, 50, 9, 48, 18, 30]
 final zones: draw=41, hand=8, discard=3
 ```
 
 Run `res://tests/fixed_seed_trace.gd` for the complete trace.
+
+Reward seed `8` at Stage 1 reproduces all three optional offers:
+
+```text
+gold: 14
+rolls: remove=0.3176708519, trinket=0.0908571184, card_choice=0.3534998894
+trinket: sharpened_clip
+candidates: [9♥#53, 6♦#54, 7♦#55, 7♥#56, 2♦#57]
+```
+
+Reward seed `62` produces no optional rewards. Run `res://tests/reward_seed_trace.gd` for the exact machine-readable reward trace.
+
+Node seed `7` at Stage 2 reproduces:
+
+```text
+[shop, fountain, treasure]
+```
+
+Choosing Shop with inventory seed `90001` produces:
+
+```text
+[cracked_hourglass, razor_ribbon, silver_compass,
+ split_coin, sharpened_clip, hunters_mark]
+```
+
+Completing that Shop and generating node seed `8` at Stage 3 produces:
+
+```text
+[shop, elite, battle]
+```
+
+Run `res://tests/node_seed_trace.gd` for the complete Stage 1 battle reward → Stage 2 map → Shop → Stage 3 map reproduction.
